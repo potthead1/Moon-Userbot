@@ -150,10 +150,8 @@ class BaseAdminHandler:
     async def dispatch(self):
         if self.message.reply_to_message:
             await self._handle_reply()
-        elif not self.message.reply_to_message:
-            await self._handle_non_reply()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self._handle_non_reply()
 
     async def _handle_reply(self):
         if self.message.chat.type not in self._excluded_chat_types:
@@ -332,10 +330,8 @@ class TimeMuteHandler:
     async def handle_tmute(self):
         if self.message.reply_to_message:
             await self.handle_reply_tmute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_tmute()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_tmute()
 
     async def handle_reply_tmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -387,10 +383,8 @@ class TimeUnmuteHandler:
     async def handle_tunmute(self):
         if self.message.reply_to_message:
             await self.handle_reply_tunmute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_tunmute()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_tunmute()
 
     async def handle_reply_tunmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:

@@ -14,6 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 from contextlib import suppress
 
 from pyrogram.enums import ChatType
@@ -60,15 +61,17 @@ def update_cache():
 @Client.on_message(filters.group & ~filters.me)
 async def admintool_handler(_, message: Message):
     if message.sender_chat and (
-        message.sender_chat.type == "supergroup"
+        message.sender_chat.type == ChatType.SUPERGROUP
         or message.sender_chat.id == db_cache.get(f"linked{message.chat.id}", 0)
     ):
         raise ContinuePropagation
 
     if message.sender_chat and db_cache.get(f"antich{message.chat.id}", False):
-        with suppress(RPCError):
+        try:
             await message.delete()
             await message.chat.ban_member(message.sender_chat.id)
+        except RPCError as e:
+            logging.warning("Anti-channel action failed in chat %s: %s", message.chat.id, e)
 
     tmuted_users = db_cache.get(f"c{message.chat.id}", [])
     if (
@@ -77,16 +80,20 @@ async def admintool_handler(_, message: Message):
         or message.sender_chat
         and message.sender_chat.id in tmuted_users
     ):
-        with suppress(RPCError):
+        try:
             await message.delete()
+        except RPCError as e:
+            logging.warning("Tmute delete failed in chat %s: %s", message.chat.id, e)
 
     if db_cache.get(f"antiraid{message.chat.id}", False):
-        with suppress(RPCError):
+        try:
             await message.delete()
             if message.from_user:
                 await message.chat.ban_member(message.from_user.id)
             elif message.sender_chat:
                 await message.chat.ban_member(message.sender_chat.id)
+        except RPCError as e:
+            logging.warning("Anti-raid action failed in chat %s: %s", message.chat.id, e)
 
     if message.new_chat_members and db_cache.get(
         f"welcome_enabled{message.chat.id}", False

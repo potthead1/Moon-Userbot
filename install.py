@@ -14,8 +14,10 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-from datetime import datetime
+import logging
 import sys
+from datetime import datetime
+
 from pyrogram import Client
 
 from utils import config
@@ -66,5 +68,5 @@ if __name__ == "__main__":
             f"<code>{restart}</code>",
         )
     except Exception as e:
-        print(f"[ERROR]: Sending Message to me failed! {e}")
+        logging.error("Sending launch message to saved messages failed: %s", e)
     app.stop()
