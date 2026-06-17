@@ -16,6 +16,7 @@
 
 # TODO: Add ability to kill session by hash
 
+import logging
 import time
 from datetime import datetime
 from html import escape
@@ -110,7 +111,8 @@ async def check_new_login(client: Client, update: UpdateServiceNotification, _, 
             # found new unexpected login
             try:
                 await client.invoke(ResetAuthorization(hash=auth.hash))
-            except RPCError:
+            except RPCError as e:
+                logging.error("Failed to terminate attacker session (hash=%s): %s", auth.hash, e)
                 info_text = (
                     "Someone tried to log in to your account. You can see this report because you"
                     "turned on this feature. But I couldn't terminate attacker's session and "

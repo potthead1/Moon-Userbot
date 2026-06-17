@@ -169,6 +169,7 @@ def cm_ru(url: str) -> str:
         reply += "`Error: Can't extract the link`\n"
         return reply
     except IndexError:
+        reply += "`Error: Empty or unexpected response from cmrudl`\n"
         return reply
     dl_url = data["download"]
     name = data["file_name"]

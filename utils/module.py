@@ -29,8 +29,8 @@ class ModuleManager:
                 await load_module(
                     path.stem, app, core="custom_modules" not in path.parent.parts
                 )
-            except Exception:
-                logging.warning("Can't import module %s", path.stem, exc_info=True)
+            except (ImportError, SyntaxError, AttributeError, TypeError, ValueError) as e:
+                logging.warning("Can't import module %s: %s", path.stem, e, exc_info=True)
                 self.failed_modules += 1
             else:
                 self.success_modules += 1
