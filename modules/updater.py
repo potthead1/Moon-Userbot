@@ -24,7 +24,7 @@ from pyrogram.types import Message
 
 from utils.misc import modules_help, prefix, requirements_list
 from utils.db import db
-from utils.scripts import format_exc, restart
+from utils.scripts import format_exc, restart, safe_remove
 
 
 def check_command(command):
@@ -49,8 +49,7 @@ async def restart_cmd(_, message: Message):
         return
 
     await message.edit("<b>Restarting...</b>")
-    if os.path.exists("moonlogs.txt"):
-        os.remove("moonlogs.txt")
+    safe_remove("moonlogs.txt")
     restart()
 
 
@@ -106,8 +105,7 @@ async def update(_, message: Message):
         db.remove("core.updater", "restart_info")
     else:
         await message.edit("<b>Updating: done! Restarting...</b>")
-        if os.path.exists("moonlogs.txt"):
-            os.remove("moonlogs.txt")
+        safe_remove("moonlogs.txt")
         restart()
 
 

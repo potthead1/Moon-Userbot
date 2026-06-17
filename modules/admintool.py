@@ -45,6 +45,7 @@ from utils.handlers import (
     AntiChannelsHandler,
     DeleteHistoryHandler,
     AntiRaidHandler,
+    get_user_and_name,
 )
 
 
@@ -96,19 +97,6 @@ async def admintool_handler(_, message: Message):
         )
 
     raise ContinuePropagation
-
-
-async def get_user_and_name(message):
-    if message.reply_to_message.from_user:
-        return (
-            message.reply_to_message.from_user.id,
-            message.reply_to_message.from_user.first_name,
-        )
-    if message.reply_to_message.sender_chat:
-        return (
-            message.reply_to_message.sender_chat.id,
-            message.reply_to_message.sender_chat.title,
-        )
 
 
 @Client.on_message(filters.command(["ban"], prefix) & filters.me)

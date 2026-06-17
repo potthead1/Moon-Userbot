@@ -6,7 +6,6 @@
 #
 # All rights reserved.
 
-import os
 import time
 
 import requests
@@ -15,7 +14,7 @@ from pyrogram.types import Message
 
 from utils.config import vt_key as vak
 from utils.misc import modules_help, prefix
-from utils.scripts import edit_or_reply, format_exc, progress
+from utils.scripts import edit_or_reply, format_exc, progress, safe_remove
 
 
 @Client.on_message(filters.command("vt", prefix) & filters.me)
@@ -59,8 +58,7 @@ async def scan_my_file(_, message: Message):
     await ms_.edit(
         f'<b><u>Scanned {message.reply_to_message.document.file_name}</b></u>. <b>You Can Visit :</b> <a href="https://www.virustotal.com/gui/file/{md5}">Here</a> <b>In 5-10 Min To See File Report</b>'
     )
-    if os.path.exists(downloaded_file_name):
-        os.remove(downloaded_file_name)
+    safe_remove(downloaded_file_name)
 
 
 @Client.on_message(filters.command("vtl", prefix) & filters.me)
@@ -126,8 +124,7 @@ async def scan_my_large_file(_, message: Message):
     await ms_.edit(
         f'<b><u>Scanned {message.reply_to_message.document.file_name}</b></u>. <b>You Can Visit :</b> <a href="https://www.virustotal.com/gui/file/{md5}">Here</a> <b>In 5-10 Min To See File Report</b>'
     )
-    if os.path.exists(downloaded_file_name):
-        os.remove(downloaded_file_name)
+    safe_remove(downloaded_file_name)
 
 
 modules_help["virustotal"] = {

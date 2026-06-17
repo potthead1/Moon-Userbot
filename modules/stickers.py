@@ -14,7 +14,6 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
-import os
 from io import BytesIO
 
 from pyrogram import Client, filters, types, enums
@@ -26,6 +25,7 @@ from utils.scripts import (
     interact_with_to_delete,
     format_exc,
     resize_image,
+    safe_remove,
 )
 
 
@@ -82,8 +82,7 @@ async def kang(client: Client, message: types.Message):
         return
 
     resized = resize_image(path)
-    if os.path.exists(path):
-        os.remove(path)
+    safe_remove(path)
 
     await interact_with(
         await client.send_document(
@@ -120,8 +119,7 @@ async def stick2png(client: Client, message: types.Message):
         path = await message.reply_to_message.download()
         with open(path, "rb") as f:
             content = f.read()
-        if os.path.exists(path):
-            os.remove(path)
+        safe_remove(path)
 
         file_io = BytesIO(content)
         file_io.name = "sticker.png"
@@ -144,8 +142,7 @@ async def resize_cmd(client: Client, message: types.Message):
         path = await message.reply_to_message.download()
         resized = resize_image(path)
         resized.name = "image.png"
-        if os.path.exists(path):
-            os.remove(path)
+        safe_remove(path)
 
         await client.send_document(
             message.chat.id, resized, parse_mode=enums.ParseMode.MARKDOWN

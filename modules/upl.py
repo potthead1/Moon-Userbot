@@ -20,7 +20,7 @@ import time
 from pyrogram import Client, filters
 from pyrogram.types import Message
 from utils.misc import modules_help, prefix
-from utils.scripts import format_exc, progress
+from utils.scripts import format_exc, progress, safe_remove
 
 
 @Client.on_message(filters.command("upl", prefix) & filters.me)
@@ -120,8 +120,7 @@ async def uplr(client: Client, message: Message):
     except Exception as e:
         await message.edit(format_exc(e))
     finally:
-        if os.path.exists(link):
-            os.remove(link)
+        safe_remove(link)
 
 
 modules_help["uplud"] = {

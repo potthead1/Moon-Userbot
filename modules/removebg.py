@@ -8,7 +8,6 @@
 # Modifed by @moonuserbot
 
 import io
-import os
 from datetime import datetime
 from functools import wraps
 from io import BytesIO
@@ -20,7 +19,7 @@ from pyrogram.types import Message
 
 from utils.config import rmbg_key
 from utils.misc import modules_help, prefix
-from utils.scripts import edit_or_reply, format_exc
+from utils.scripts import edit_or_reply, format_exc, safe_remove
 
 
 async def convert_to_image(message, client) -> None | str:
@@ -132,8 +131,7 @@ async def rmbg(client: Client, message: Message):
         allow_redirects=True,
         stream=True,
     )
-    if os.path.exists(cool):
-        os.remove(cool)
+    safe_remove(cool)
     output_file_name = r
     contentType = output_file_name.headers.get("content-type")
     if "image" in contentType:
@@ -147,8 +145,7 @@ async def rmbg(client: Client, message: Message):
         await pablo.edit(
             f"<code>Removed image's Background in {ms} seconds, powered by </code> <b>@moonuserbot</b>"
         )
-        if os.path.exists("BG_rem.png"):
-            os.remove("BG_rem.png")
+        safe_remove("BG_rem.png")
     else:
         await pablo.edit(
             "ReMove.BG API returned Errors. Please report to @moonub_chat"
@@ -184,8 +181,7 @@ async def rembg(client: Client, message: Message):
     except Exception as e:
         await message.reply_text(f"An error occurred: {format_exc(e)}")
     finally:
-        if os.path.exists(photo_data):
-            os.remove(photo_data)
+        safe_remove(photo_data)
 
 
 modules_help["removebg"] = {

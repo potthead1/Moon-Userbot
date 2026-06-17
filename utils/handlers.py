@@ -86,7 +86,59 @@ async def get_user_and_name(message):
         )
 
 
-class BanHandler:
+def _get_target_name(user):
+    return (
+        user.first_name
+        if getattr(user, "first_name", None)
+        else user.title
+    )
+
+
+def _format_cause_text(cause: str, exclude_words=None, split_max=None):
+    if exclude_words is None:
+        exclude_words = ["delete_history", "report_spam"]
+    text_c = "".join(
+        f" {_}"
+        for _ in cause.split()
+        if _.lower() not in exclude_words
+    )
+    if split_max is not None and len(text_c.split()) > split_max:
+        return "<b>Cause:</b> <i>" + text_c.split(maxsplit=split_max)[split_max] + "</i>"
+    if split_max is None and len(text_c.split()) > 1:
+        return "<b>Cause:</b> <i>" + text_c.split(maxsplit=1)[1] + "</i>"
+    return ""
+
+
+async def _resolve_target_user(client: Client, message: Message, cause: str):
+    user_type = await check_username_or_id(cause.split(" ")[1])
+    if user_type == "channel":
+        return await client.get_chat(cause.split(" ")[1])
+    if user_type == "user":
+        return await client.get_users(cause.split(" ")[1])
+    await message.edit("<b>Invalid user type</b>")
+    return None
+
+
+async def _handle_additional_actions(client, cause, channel, user_id, reply_msg_id):
+    if "report_spam" in cause.lower().split():
+        await client.invoke(
+            functions.channels.ReportSpam(
+                channel=channel,
+                participant=user_id,
+                id=[reply_msg_id],
+            )
+        )
+    if "delete_history" in cause.lower().split():
+        await client.invoke(
+            functions.channels.DeleteParticipantHistory(
+                channel=channel, participant=user_id
+            )
+        )
+
+
+class BaseAdminHandler:
+    _excluded_chat_types = [ChatType.PRIVATE, ChatType.CHANNEL]
+
     def __init__(self, client: Client, message: Message):
         self.client = client
         self.message = message
@@ -95,247 +147,149 @@ class BanHandler:
         self.user_id = None
         self.name = None
 
+    async def dispatch(self):
+        if self.message.reply_to_message:
+            await self._handle_reply()
+        elif not self.message.reply_to_message:
+            await self._handle_non_reply()
+        else:
+            await self.message.edit("<b>Unsupported</b>")
+
+    async def _handle_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
+            user_id, self.name = await get_user_and_name(self.message)
+            await self._execute_action(user_id)
+
+    async def _handle_non_reply(self):
+        if (
+            self.message.chat.type not in self._excluded_chat_types
+            and len(self.cause.split()) > 1
+        ):
+            user = await _resolve_target_user(
+                self.client, self.message, self.cause
+            )
+            if user:
+                self.name = _get_target_name(user)
+                await self._execute_action(user.id)
+
+    async def _execute_action(self, user_id):
+        raise NotImplementedError
+
+    def _format_result_message(self, action_word: str) -> str:
+        cause_text = _format_cause_text(self.cause)
+        return (
+            f"<b>{self.name}</b> <code>{action_word}</code>"
+            + (f"\n{cause_text}" if cause_text else "")
+        )
+
+    async def _run_with_admin_error_handling(self, coro):
+        try:
+            await coro
+        except UserAdminInvalid:
+            await self.message.edit("<b>No rights</b>")
+        except ChatAdminRequired:
+            await self.message.edit("<b>No rights</b>")
+        except Exception as e:
+            await self.message.edit(format_exc(e))
+
+
+class BanHandler(BaseAdminHandler):
     async def handle_ban(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_ban()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_ban()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_ban(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
-            user_for_ban, self.name = await get_user_and_name(self.message)
-            await self.ban_user(user_for_ban)
-
-    async def handle_non_reply_ban(self):
+    async def _handle_non_reply(self):
         if (
             self.message.chat.type not in ["private", "channel"]
             and len(self.cause.split()) > 1
         ):
-            user_to_ban = await self.get_user_to_ban()
-            if user_to_ban:
-                self.name = (
-                    user_to_ban.first_name
-                    if getattr(user_to_ban, "first_name", None)
-                    else user_to_ban.title
-                )
-                await self.ban_user(user_to_ban.id)
-
-    async def get_user_to_ban(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
-
-    async def ban_user(self, user_id):
-        try:
-            await self.client.ban_chat_member(self.message.chat.id, user_id)
-            self.channel = await self.client.resolve_peer(self.message.chat.id)
-            self.user_id = await self.client.resolve_peer(user_id)
-            await self.handle_additional_actions()
-            await self.edit_message()
-        except UserAdminInvalid:
-            await self.message.edit("<b>No rights</b>")
-        except ChatAdminRequired:
-            await self.message.edit("<b>No rights</b>")
-        except Exception as e:
-            await self.message.edit(format_exc(e))
-
-    async def handle_additional_actions(self):
-        if "report_spam" in self.cause.lower().split():
-            await self.client.invoke(
-                functions.channels.ReportSpam(
-                    channel=self.channel,
-                    participant=self.user_id,
-                    id=[self.message.reply_to_message.id],
-                )
+            user = await _resolve_target_user(
+                self.client, self.message, self.cause
             )
-        if "delete_history" in self.cause.lower().split():
-            await self.client.invoke(
-                functions.channels.DeleteParticipantHistory(
-                    channel=self.channel, participant=self.user_id
-                )
-            )
+            if user:
+                self.name = _get_target_name(user)
+                await self._execute_action(user.id)
 
-    async def edit_message(self):
-        text_c = "".join(
-            f" {_}"
-            for _ in self.cause.split()
-            if _.lower() not in ["delete_history", "report_spam"]
+    async def _execute_action(self, user_id):
+        await self._run_with_admin_error_handling(self._ban_user(user_id))
+
+    async def _ban_user(self, user_id):
+        await self.client.ban_chat_member(self.message.chat.id, user_id)
+        self.channel = await self.client.resolve_peer(self.message.chat.id)
+        self.user_id = await self.client.resolve_peer(user_id)
+        await _handle_additional_actions(
+            self.client, self.cause, self.channel, self.user_id,
+            self.message.reply_to_message.id if self.message.reply_to_message else None,
         )
-        await self.message.edit(
-            f"<b>{self.name}</b> <code>banned!</code>"
-            + f"\n{'<b>Cause:</b> <i>' + text_c.split(maxsplit=1)[1] + '</i>' if len(text_c.split()) > 1 else ''}"
-        )
+        await self.message.edit(self._format_result_message("banned!"))
 
 
-class UnbanHandler:
-    def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
-        self.channel = None
-        self.user_id = None
-        self.name = None
-
+class UnbanHandler(BaseAdminHandler):
     async def handle_unban(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_unban()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_unban()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_unban(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
-            user_for_unban, self.name = await get_user_and_name(self.message)
-            await self.unban_user(user_for_unban)
-
-    async def handle_non_reply_unban(self):
+    async def _handle_non_reply(self):
         if (
             self.message.chat.type not in ["private", "channel"]
             and len(self.cause.split()) > 1
         ):
-            user_to_unban = await self.get_user_to_unban()
-            if user_to_unban:
-                self.name = (
-                    user_to_unban.first_name
-                    if getattr(user_to_unban, "first_name", None)
-                    else user_to_unban.title
-                )
-                await self.unban_user(user_to_unban.id)
+            user = await _resolve_target_user(
+                self.client, self.message, self.cause
+            )
+            if user:
+                self.name = _get_target_name(user)
+                await self._execute_action(user.id)
 
-    async def get_user_to_unban(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        await self._run_with_admin_error_handling(self._unban_user(user_id))
 
-    async def unban_user(self, user_id):
-        try:
-            await self.client.unban_chat_member(self.message.chat.id, user_id)
-            self.channel = await self.client.resolve_peer(self.message.chat.id)
-            self.user_id = await self.client.resolve_peer(user_id)
-            await self.edit_message()
-        except UserAdminInvalid:
-            await self.message.edit("<b>No rights</b>")
-        except ChatAdminRequired:
-            await self.message.edit("<b>No rights</b>")
-        except Exception as e:
-            await self.message.edit(format_exc(e))
-
-    async def edit_message(self):
-        text_c = "".join(
-            f" {_}"
-            for _ in self.cause.split()
-            if _.lower() not in ["delete_history", "report_spam"]
-        )
-        await self.message.edit(
-            f"<b>{self.name}</b> <code>unbanned!</code>"
-            + f"\n{'<b>Cause:</b> <i>' + text_c.split(maxsplit=1)[1] + '</i>' if len(text_c.split()) > 1 else ''}"
-        )
+    async def _unban_user(self, user_id):
+        await self.client.unban_chat_member(self.message.chat.id, user_id)
+        self.channel = await self.client.resolve_peer(self.message.chat.id)
+        self.user_id = await self.client.resolve_peer(user_id)
+        await self.message.edit(self._format_result_message("unbanned!"))
 
 
-class KickHandler:
-    def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
-        self.channel = None
-        self.user_id = None
-        self.name = None
-
+class KickHandler(BaseAdminHandler):
     async def handle_kick(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_kick()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_kick()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_kick(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             if self.message.reply_to_message.from_user:
                 self.name = self.message.reply_to_message.from_user.first_name
-                await self.kick_user(self.message.reply_to_message.from_user.id)
+                await self._execute_action(self.message.reply_to_message.from_user.id)
             else:
                 await self.message.edit("<b>Reply on user msg</b>")
 
-    async def handle_non_reply_kick(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_non_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             if len(self.cause.split()) > 1:
-                user_to_kick = await self.get_user_to_kick()
-                if user_to_kick:
-                    self.name = (
-                        user_to_kick.first_name
-                        if getattr(user_to_kick, "first_name", None)
-                        else user_to_kick.title
-                    )
-                    await self.kick_user(user_to_kick.id)
+                user = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
+                if user:
+                    self.name = _get_target_name(user)
+                    await self._execute_action(user.id)
             else:
                 await self.message.edit("<b>user_id or username</b>")
 
-    async def get_user_to_kick(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        await self._run_with_admin_error_handling(self._kick_user(user_id))
 
-    async def kick_user(self, user_id):
-        try:
-            await self.client.ban_chat_member(
-                self.message.chat.id,
-                user_id,
-                datetime.now() + timedelta(minutes=1),
-            )
-            self.channel = await self.client.resolve_peer(self.message.chat.id)
-            self.user_id = await self.client.resolve_peer(user_id)
-            await self.handle_additional_actions()
-            await self.client.unban_chat_member(self.message.chat.id, user_id)
-            await self.edit_message()
-        except UserAdminInvalid:
-            await self.message.edit("<b>No rights</b>")
-        except ChatAdminRequired:
-            await self.message.edit("<b>No rights</b>")
-        except Exception as e:
-            await self.message.edit(format_exc(e))
-
-    async def handle_additional_actions(self):
-        if "report_spam" in self.cause.lower().split():
-            await self.client.invoke(
-                functions.channels.ReportSpam(
-                    channel=self.channel,
-                    participant=self.user_id,
-                    id=[self.message.reply_to_message.id],
-                )
-            )
-        if "delete_history" in self.cause.lower().split():
-            await self.client.invoke(
-                functions.channels.DeleteParticipantHistory(
-                    channel=self.channel, participant=self.user_id
-                )
-            )
-
-    async def edit_message(self):
-        text_c = "".join(
-            f" {_}"
-            for _ in self.cause.split()
-            if _.lower() not in ["delete_history", "report_spam"]
+    async def _kick_user(self, user_id):
+        await self.client.ban_chat_member(
+            self.message.chat.id,
+            user_id,
+            datetime.now() + timedelta(minutes=1),
         )
-        await self.message.edit(
-            f"<b>{self.name}</b> <code>kicked!</code>"
-            + f"\n{'<b>Cause:</b> <i>' + text_c.split(maxsplit=1)[1] + '</i>' if len(text_c.split()) > 1 else ''}"
+        self.channel = await self.client.resolve_peer(self.message.chat.id)
+        self.user_id = await self.client.resolve_peer(user_id)
+        await _handle_additional_actions(
+            self.client, self.cause, self.channel, self.user_id,
+            self.message.reply_to_message.id if self.message.reply_to_message else None,
         )
+        await self.client.unban_chat_member(self.message.chat.id, user_id)
+        await self.message.edit(self._format_result_message("kicked!"))
 
 
 class KickDeletedAccountsHandler:
@@ -391,27 +345,28 @@ class TimeMuteHandler:
             else:
                 self.tmuted_users.append(user_for_tmute)
                 db.set("core.ats", f"c{self.chat_id}", self.tmuted_users)
+                cause_text = _format_cause_text(self.cause, exclude_words=[], split_max=None)
                 await self.message.edit(
                     f"<b>{name}</b> <code>in tmute</code>"
-                    + f"\n{'<b>Cause:</b> <i>' + self.cause.split(maxsplit=1)[1] + '</i>' if len(self.cause.split()) > 1 else ''}",
+                    + (f"\n{cause_text}" if cause_text else ""),
                 )
 
     async def handle_non_reply_tmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
             if len(self.cause.split()) > 1:
-                user_to_tmute = await self.get_user_to_tmute()
+                user_to_tmute = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 if user_to_tmute:
-                    name = (
-                        user_to_tmute.first_name
-                        if getattr(user_to_tmute, "first_name", None)
-                        else user_to_tmute.title
-                    )
+                    name = _get_target_name(user_to_tmute)
                     if user_to_tmute.id not in self.tmuted_users:
                         self.tmuted_users.append(user_to_tmute.id)
                         db.set("core.ats", f"c{self.chat_id}", self.tmuted_users)
+                        cause_part = ""
+                        if len(self.cause.split()) > 2:
+                            cause_part = "\n<b>Cause:</b> <i>" + self.cause.split(maxsplit=2)[2] + "</i>"
                         await self.message.edit(
-                            f"<b>{name}</b> <code>in tmute</code>"
-                            + f"\n{'<b>Cause:</b> <i>' + self.cause.split(maxsplit=2)[2] + '</i>' if len(self.cause.split()) > 2 else ''}",
+                            f"<b>{name}</b> <code>in tmute</code>" + cause_part,
                         )
                     else:
                         await self.message.edit(
@@ -419,15 +374,6 @@ class TimeMuteHandler:
                         )
             else:
                 await self.message.edit("<b>user_id or username</b>")
-
-    async def get_user_to_tmute(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
 
 
 class TimeUnmuteHandler:
@@ -454,21 +400,20 @@ class TimeUnmuteHandler:
             else:
                 self.tmuted_users.remove(user_for_tunmute)
                 db.set("core.ats", f"c{self.chat_id}", self.tmuted_users)
+                cause_text = _format_cause_text(self.cause, exclude_words=[], split_max=None)
                 await self.message.edit(
                     f"<b>{name}</b> <code>tunmuted</code>"
-                    + f"\n{'<b>Cause:</b> <i>' + self.cause.split(maxsplit=1)[1] + '</i>' if len(self.cause.split()) > 1 else ''}",
+                    + (f"\n{cause_text}" if cause_text else ""),
                 )
 
     async def handle_non_reply_tunmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
             if len(self.cause.split()) > 1:
-                user_to_tunmute = await self.get_user_to_tunmute()
+                user_to_tunmute = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 if user_to_tunmute:
-                    name = (
-                        user_to_tunmute.first_name
-                        if getattr(user_to_tunmute, "first_name", None)
-                        else user_to_tunmute.title
-                    )
+                    name = _get_target_name(user_to_tunmute)
                     if user_to_tunmute.id not in self.tmuted_users:
                         await self.message.edit(
                             f"<b>{name}</b> <code>not in tmute</code>",
@@ -476,21 +421,14 @@ class TimeUnmuteHandler:
                     else:
                         self.tmuted_users.remove(user_to_tunmute.id)
                         db.set("core.ats", f"c{self.chat_id}", self.tmuted_users)
+                        cause_part = ""
+                        if len(self.cause.split()) > 2:
+                            cause_part = "\n<b>Cause:</b> <i>" + self.cause.split(maxsplit=2)[2] + "</i>"
                         await self.message.edit(
-                            f"<b>{name}</b> <code>tunmuted</code>"
-                            + f"\n{'<b>Cause:</b> <i>' + self.cause.split(maxsplit=2)[2] + '</i>' if len(self.cause.split()) > 2 else ''}",
+                            f"<b>{name}</b> <code>tunmuted</code>" + cause_part,
                         )
             else:
                 await self.message.edit("<b>user_id or username</b>")
-
-    async def get_user_to_tunmute(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
 
 
 class TimeMuteUsersHandler:
@@ -542,31 +480,27 @@ class TimeMuteUsersHandler:
             return None
 
 
-class UnmuteHandler:
+class UnmuteHandler(BaseAdminHandler):
     def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
+        super().__init__(client, message)
         self.chat_id = message.chat.id
         self.permissions = message.chat.permissions
 
     async def handle_unmute(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_unmute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_unmute()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_unmute(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             user_for_unmute = self.message.reply_to_message.from_user
             if user_for_unmute:
                 try:
-                    await self.unmute_user(user_for_unmute.id)
+                    await self._unmute_user(user_for_unmute.id)
+                    cause_text = ""
+                    if len(self.cause.split()) > 1:
+                        cause_text = "\n<b>Cause:</b> <i>" + self.cause.split(' ', maxsplit=1)[1] + "</i>"
                     await self.message.edit(
                         f"<b>{user_for_unmute.first_name}</b> <code>unmuted</code>"
-                        + f"\n{'<b>Cause:</b> <i>' + self.cause.split(' ', maxsplit=1)[1] + '</i>' if len(self.cause.split()) > 1 else ''}"
+                        + cause_text
                     )
                 except UserAdminInvalid:
                     await self.message.edit("<b>No rights</b>")
@@ -577,16 +511,21 @@ class UnmuteHandler:
             else:
                 await self.message.edit("<b>Reply on user msg</b>")
 
-    async def handle_non_reply_unmute(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_non_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             if len(self.cause.split()) > 1:
-                user_to_unmute = await self.get_user_to_unmute()
+                user_to_unmute = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 if user_to_unmute:
                     try:
-                        await self.unmute_user(user_to_unmute.id)
+                        await self._unmute_user(user_to_unmute.id)
+                        cause_text = ""
+                        if len(self.cause.split()) > 2:
+                            cause_text = "\n<b>Cause:</b> <i>" + self.cause.split(' ', maxsplit=2)[2] + "</i>"
                         await self.message.edit(
                             f"<b>{user_to_unmute.first_name}</b> <code>unmuted!</code>"
-                            + f"\n{'<b>Cause:</b> <i>' + self.cause.split(' ', maxsplit=2)[2] + '</i>' if len(self.cause.split()) > 2 else ''}"
+                            + cause_text
                         )
                     except UserAdminInvalid:
                         await self.message.edit("<b>No rights</b>")
@@ -599,16 +538,10 @@ class UnmuteHandler:
             else:
                 await self.message.edit("<b>user_id or username</b>")
 
-    async def get_user_to_unmute(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        pass
 
-    async def unmute_user(self, user_id):
+    async def _unmute_user(self, user_id):
         try:
             await self.client.restrict_chat_member(
                 self.chat_id,
@@ -620,30 +553,23 @@ class UnmuteHandler:
             await self.message.edit(format_exc(e))
 
 
-class MuteHandler:
+class MuteHandler(BaseAdminHandler):
     def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
+        super().__init__(client, message)
         self.chat_id = message.chat.id
 
     async def handle_mute(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_mute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_mute()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_mute(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             user_for_mute = self.message.reply_to_message.from_user
             if user_for_mute:
-                mute_seconds = self.calculate_mute_seconds()
+                mute_seconds = self._calculate_mute_seconds()
                 try:
-                    await self.mute_user(user_for_mute.id, mute_seconds)
+                    await self._mute_user(user_for_mute.id, mute_seconds)
                     await self.message.edit(
-                        self.construct_mute_message(user_for_mute, mute_seconds)
+                        self._construct_mute_message(user_for_mute, mute_seconds)
                     )
                 except UserAdminInvalid:
                     await self.message.edit("<b>No rights</b>")
@@ -654,16 +580,18 @@ class MuteHandler:
             else:
                 await self.message.edit("<b>Reply on user msg</b>")
 
-    async def handle_non_reply_mute(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_non_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             if len(self.cause.split()) > 1:
-                user_to_mute = await self.get_user_to_mute()
+                user_to_mute = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 if user_to_mute:
-                    mute_seconds = self.calculate_mute_seconds()
+                    mute_seconds = self._calculate_mute_seconds()
                     try:
-                        await self.mute_user(user_to_mute.id, mute_seconds)
+                        await self._mute_user(user_to_mute.id, mute_seconds)
                         await self.message.edit(
-                            self.construct_mute_message(user_to_mute, mute_seconds)
+                            self._construct_mute_message(user_to_mute, mute_seconds)
                         )
                     except UserAdminInvalid:
                         await self.message.edit("<b>No rights</b>")
@@ -676,16 +604,10 @@ class MuteHandler:
             else:
                 await self.message.edit("<b>user_id or username</b>")
 
-    async def get_user_to_mute(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        pass
 
-    def calculate_mute_seconds(self):
+    def _calculate_mute_seconds(self):
         mute_seconds: int = 0
         for character in "mhdw":
             match = re.search(rf"(\d+|(\d+\.\d+)){character}", self.message.text)
@@ -701,7 +623,7 @@ class MuteHandler:
                     mute_seconds += int(value * 604800)
         return mute_seconds
 
-    async def mute_user(self, user_id, mute_seconds):
+    async def _mute_user(self, user_id, mute_seconds):
         try:
             if mute_seconds > 30:
                 await self.client.restrict_chat_member(
@@ -719,7 +641,7 @@ class MuteHandler:
         except Exception as e:
             await self.message.edit(format_exc(e))
 
-    def construct_mute_message(self, user, mute_seconds):
+    def _construct_mute_message(self, user, mute_seconds):
         mute_time: Dict[str, int] = {
             "days": mute_seconds // 86400,
             "hours": mute_seconds % 86400 // 3600,
@@ -736,42 +658,36 @@ class MuteHandler:
         return message_text
 
 
-class DemoteHandler:
+class DemoteHandler(BaseAdminHandler):
+    _common_privileges_demote = {
+        "is_anonymous": False,
+        "can_manage_chat": False,
+        "can_change_info": False,
+        "can_post_messages": False,
+        "can_edit_messages": False,
+        "can_delete_messages": False,
+        "can_manage_video_chats": False,
+        "can_restrict_members": False,
+        "can_invite_users": False,
+        "can_pin_messages": False,
+        "can_promote_members": False,
+    }
+
     def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
+        super().__init__(client, message)
         self.chat_id = message.chat.id
-        self.common_privileges_demote = {
-            "is_anonymous": False,
-            "can_manage_chat": False,
-            "can_change_info": False,
-            "can_post_messages": False,
-            "can_edit_messages": False,
-            "can_delete_messages": False,
-            "can_manage_video_chats": False,
-            "can_restrict_members": False,
-            "can_invite_users": False,
-            "can_pin_messages": False,
-            "can_promote_members": False,
-        }
 
     async def handle_demote(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_demote()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_demote()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_demote(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             user_for_demote = self.message.reply_to_message.from_user
             if user_for_demote:
                 try:
-                    await self.demote_user(user_for_demote.id)
+                    await self._demote_user(user_for_demote.id)
                     await self.message.edit(
-                        self.construct_demote_message(user_for_demote)
+                        self._construct_action_message(user_for_demote, "demoted!")
                     )
                 except UserAdminInvalid:
                     await self.message.edit("<b>No rights</b>")
@@ -782,15 +698,17 @@ class DemoteHandler:
             else:
                 await self.message.edit("<b>Reply on user msg</b>")
 
-    async def handle_non_reply_demote(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_non_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             if len(self.cause.split()) > 1:
-                user_to_demote = await self.get_user_to_demote()
+                user_to_demote = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 if user_to_demote:
                     try:
-                        await self.demote_user(user_to_demote.id)
+                        await self._demote_user(user_to_demote.id)
                         await self.message.edit(
-                            self.construct_demote_message(user_to_demote)
+                            self._construct_action_message(user_to_demote, "demoted!")
                         )
                     except UserAdminInvalid:
                         await self.message.edit("<b>No rights</b>")
@@ -803,21 +721,15 @@ class DemoteHandler:
             else:
                 await self.message.edit("<b>user_id or username not provided!</b>")
 
-    async def get_user_to_demote(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        pass
 
-    async def demote_user(self, user_id):
+    async def _demote_user(self, user_id):
         try:
             await self.client.promote_chat_member(
                 self.chat_id,
                 user_id,
-                privileges=ChatPrivileges(**self.common_privileges_demote),
+                privileges=ChatPrivileges(**self._common_privileges_demote),
             )
         except UserAdminInvalid:
             raise UserAdminInvalid()
@@ -826,36 +738,33 @@ class DemoteHandler:
         except Exception as e:
             await self.message.edit(format_exc(e))
 
-    def construct_demote_message(self, user):
+    def _construct_action_message(self, user, action_word):
+        cause_text = ""
+        if len(self.cause.split()) > 2:
+            cause_text = "\n<b>Cause:</b> <i>" + self.cause.split(' ', maxsplit=2)[2] + "</i>"
         return (
-            f"<b>{user.first_name}</b> <code>demoted!</code>"
-            + f"\n{'<b>Cause:</b> <i>' + self.cause.split(' ', maxsplit=2)[2] + '</i>' if len(self.cause.split()) > 2 else ''}"
+            f"<b>{user.first_name}</b> <code>{action_word}</code>"
+            + cause_text
         )
 
 
-class PromoteHandler:
+class PromoteHandler(BaseAdminHandler):
+    _common_privileges_promote = {
+        "can_delete_messages": True,
+        "can_restrict_members": True,
+        "can_invite_users": True,
+        "can_pin_messages": True,
+    }
+
     def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
+        super().__init__(client, message)
         self.chat_id = message.chat.id
-        self.common_privileges_promote = {
-            "can_delete_messages": True,
-            "can_restrict_members": True,
-            "can_invite_users": True,
-            "can_pin_messages": True,
-        }
 
     async def handle_promote(self):
-        if self.message.reply_to_message:
-            await self.handle_reply_promote()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_promote()
-        else:
-            await self.message.edit("<b>Unsupported</b>")
+        await self.dispatch()
 
-    async def handle_reply_promote(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             user_for_promote = self.message.reply_to_message.from_user
             promote_title = (
                 self.message.text.split(maxsplit=1)[1]
@@ -866,9 +775,9 @@ class PromoteHandler:
                 promote_title = promote_title[:16]
             if user_for_promote:
                 try:
-                    await self.promote_user(user_for_promote.id, promote_title)
+                    await self._promote_user(user_for_promote.id, promote_title)
                     await self.message.edit(
-                        self.construct_promote_message(user_for_promote)
+                        self._construct_promote_message(user_for_promote)
                     )
                 except UserAdminInvalid:
                     await self.message.edit("<b>No rights</b>")
@@ -879,10 +788,12 @@ class PromoteHandler:
             else:
                 await self.message.edit("<b>Reply on user msg</b>")
 
-    async def handle_non_reply_promote(self):
-        if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
+    async def _handle_non_reply(self):
+        if self.message.chat.type not in self._excluded_chat_types:
             if len(self.cause.split()) > 1:
-                user_to_promote = await self.get_user_to_promote()
+                user_to_promote = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 promote_title = (
                     " ".join(self.cause.split(" ")[2:])
                     if len(self.cause.split(" ")) > 2
@@ -892,9 +803,9 @@ class PromoteHandler:
                     promote_title = promote_title[:16]
                 if user_to_promote:
                     try:
-                        await self.promote_user(user_to_promote.id, promote_title)
+                        await self._promote_user(user_to_promote.id, promote_title)
                         await self.message.edit(
-                            self.construct_promote_message(user_to_promote)
+                            self._construct_promote_message(user_to_promote)
                         )
                     except UserAdminInvalid:
                         await self.message.edit("<b>No rights</b>")
@@ -907,21 +818,15 @@ class PromoteHandler:
             else:
                 await self.message.edit("<b>user_id or username not provided!</b>")
 
-    async def get_user_to_promote(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        pass
 
-    async def promote_user(self, user_id, title):
+    async def _promote_user(self, user_id, title):
         try:
             await self.client.promote_chat_member(
                 self.chat_id,
                 user_id,
-                privileges=ChatPrivileges(**self.common_privileges_promote),
+                privileges=ChatPrivileges(**self._common_privileges_promote),
                 title=title,
             )
             if len(self.cause.split()) > 1 and self.message.chat.type == "group":
@@ -937,7 +842,7 @@ class PromoteHandler:
         except Exception as e:
             await self.message.edit(format_exc(e))
 
-    def construct_promote_message(self, user):
+    def _construct_promote_message(self, user):
         return (
             f"<b>{user.first_name}</b> <code>promoted!</code>"
             + f"\n{'<b>Title:</b> <i>' + self.cause.split(' ', maxsplit=1)[1] + '</i>' if len(self.cause.split()) > 1 else ''}"
@@ -991,28 +896,21 @@ class AntiChannelsHandler:
         await self.message.edit("<b>Blocking channels in this chat disabled.</b>")
 
 
-class DeleteHistoryHandler:
+class DeleteHistoryHandler(BaseAdminHandler):
     def __init__(self, client: Client, message: Message):
-        self.client = client
-        self.message = message
-        self.cause = text(message)
+        super().__init__(client, message)
         self.chat_id = message.chat.id
         self.prefix = prefix
 
     async def handle_delete_history(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
-            if self.message.reply_to_message:
-                await self.handle_reply_delete_history()
-            elif not self.message.reply_to_message:
-                await self.handle_non_reply_delete_history()
-            else:
-                await self.message.edit("<b>Unsupported</b>")
+            await self.dispatch()
 
-    async def handle_reply_delete_history(self):
+    async def _handle_reply(self):
         if self.message.reply_to_message.from_user:
             try:
                 user_for_delete, name = await get_user_and_name(self.message)
-                await self.delete_user_history(user_for_delete, name)
+                await self._delete_user_history(user_for_delete, name)
             except UserAdminInvalid:
                 await self.message.edit("<b>No rights</b>")
             except ChatAdminRequired:
@@ -1022,17 +920,15 @@ class DeleteHistoryHandler:
         else:
             await self.message.edit("<b>Reply on user msg</b>")
 
-    async def handle_non_reply_delete_history(self):
+    async def _handle_non_reply(self):
         if len(self.cause.split()) > 1:
             try:
-                user_to_delete = await self.get_user_to_delete()
+                user_to_delete = await _resolve_target_user(
+                    self.client, self.message, self.cause
+                )
                 if user_to_delete:
-                    name = (
-                        user_to_delete.first_name
-                        if getattr(user_to_delete, "first_name", None)
-                        else user_to_delete.title
-                    )
-                    await self.delete_user_history(user_to_delete.id, name)
+                    name = _get_target_name(user_to_delete)
+                    await self._delete_user_history(user_to_delete.id, name)
                 else:
                     await self.message.edit("<b>User is not found</b>")
             except PeerIdInvalid:
@@ -1044,16 +940,10 @@ class DeleteHistoryHandler:
         else:
             await self.message.edit("<b>user_id or username</b>")
 
-    async def get_user_to_delete(self):
-        user_type = await check_username_or_id(self.cause.split(" ")[1])
-        if user_type == "channel":
-            return await self.client.get_chat(self.cause.split(" ")[1])
-        if user_type == "user":
-            return await self.client.get_users(self.cause.split(" ")[1])
-        await self.message.edit("<b>Invalid user type</b>")
-        return None
+    async def _execute_action(self, user_id):
+        pass
 
-    async def delete_user_history(self, user_id, name):
+    async def _delete_user_history(self, user_id, name):
         try:
             channel = await self.client.resolve_peer(self.chat_id)
             user_id = await self.client.resolve_peer(user_id)
@@ -1062,9 +952,12 @@ class DeleteHistoryHandler:
                     channel=channel, participant=user_id
                 )
             )
+            cause_text = ""
+            if len(self.cause.split()) > 1:
+                cause_text = "\n<b>Cause:</b> <i>" + self.cause.split(' ', maxsplit=1)[1] + "</i>"
             await self.message.edit(
                 f"<code>History from <b>{name}</b> was deleted!</code>"
-                + f"\n{'<b>Cause:</b> <i>' + self.cause.split(' ', maxsplit=1)[1] + '</i>' if len(self.cause.split()) > 1 else ''}"
+                + cause_text
             )
         except UserAdminInvalid:
             await self.message.edit("<b>No rights</b>")

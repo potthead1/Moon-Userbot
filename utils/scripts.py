@@ -40,6 +40,12 @@ from utils.db import db
 from .misc import modules_help, prefix, requirements_list
 
 META_COMMENTS = re.compile(r"^ *# *meta +(\S+) *: *(.*?)\s*$", re.MULTILINE)
+
+
+def safe_remove(path: str) -> None:
+    if path and os.path.exists(path):
+        os.remove(path)
+
 interact_with_to_delete = []
 
 
@@ -90,8 +96,7 @@ async def edit_or_send_as_file(
             fn.write(tex)
         await client.send_document(message.chat.id, file_names, caption=caption)
         await message.delete()
-        if os.path.exists(file_names):
-            os.remove(file_names)
+        safe_remove(file_names)
         return
     return await message.edit(tex)
 
@@ -422,8 +427,7 @@ def resize_new_image(image_path, output_path, desired_width=None, desired_height
     resized_image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
 
     resized_image.save(output_path)
-    if os.path.exists(image_path):
-        os.remove(image_path)
+    safe_remove(image_path)
 
 
 async def load_module(

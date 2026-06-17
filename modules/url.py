@@ -32,7 +32,7 @@ from pySmartDL import SmartDL
 
 from utils.config import apiflash_key
 from utils.misc import modules_help, prefix
-from utils.scripts import format_exc, humanbytes, progress
+from utils.scripts import format_exc, humanbytes, progress, safe_remove
 
 
 def generate_screenshot(url):
@@ -96,40 +96,15 @@ async def urldl(client: Client, message: Message):
     # Get the file extension from the URL
     url_extension = os.path.splitext(link)[1].lower()
 
-    try:
-        os.makedirs("downloads")
-        if is_executable:
-            file_name = "downloads/" + link.split("/")[-1]
-            if not file_name.endswith(url_extension):
-                file_name += url_extension
-        elif extension:
-            file_name = "downloads/" + link.split("/")[-1]
-            if not file_name.endswith(extension):
-                file_name += extension
-        else:
-            file_name = "downloads/" + link.split("/")[-1]
-    except FileNotFoundError:
-        if is_executable:
-            file_name = "downloads/" + link.split("/")[-1]
-            if not file_name.endswith(url_extension):
-                file_name += url_extension
-        elif extension:
-            file_name = "downloads/" + link.split("/")[-1]
-            if not file_name.endswith(extension):
-                file_name += extension
-        else:
-            file_name = "downloads/" + link.split("/")[-1]
-    except FileExistsError:
-        if is_executable:
-            file_name = "downloads/" + link.split("/")[-1]
-            if not file_name.endswith(url_extension):
-                file_name += url_extension
-        elif extension:
-            file_name = "downloads/" + link.split("/")[-1]
-            if not file_name.endswith(extension):
-                file_name += extension
-        else:
-            file_name = "downloads/" + link.split("/")[-1]
+    os.makedirs("downloads", exist_ok=True)
+
+    file_name = "downloads/" + link.split("/")[-1]
+    if is_executable:
+        if not file_name.endswith(url_extension):
+            file_name += url_extension
+    elif extension:
+        if not file_name.endswith(extension):
+            file_name += extension
 
     downloader = SmartDL(link, file_name, progress_bar=False, timeout=10)
     start_t = datetime.now()
@@ -180,7 +155,7 @@ async def urldl(client: Client, message: Message):
             reply_to_message_id=message_id,
         )
         await message.delete()
-        os.remove(file_name)
+        safe_remove(file_name)
     else:
         await message.edit("<b>Failed to download</b>")
 
@@ -211,8 +186,7 @@ async def upload_cmd(_, message: Message):
 
     if os.path.getsize(file_name) > max_size:
         await message.edit(f"<b>Files longer than {max_size_mb}MB isn't supported</b>")
-        if os.path.exists(file_name):
-            os.remove(file_name)
+        safe_remove(file_name)
         return
 
     await message.edit("<b>Uploading...</b>")
@@ -238,8 +212,7 @@ async def upload_cmd(_, message: Message):
             f"<b>API returned an error!\n{response.text}\n Not allowed</b>"
         )
         print(response.text)
-    if os.path.exists(file_name):
-        os.remove(file_name)
+    safe_remove(file_name)
 
 
 @Client.on_message(filters.command(["ws", "webshot"], prefix) & filters.me)

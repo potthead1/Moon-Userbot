@@ -24,7 +24,7 @@ from pyrogram.errors import MessageTooLong
 from pyrogram.types import Message
 
 from utils.misc import modules_help, prefix
-from utils.scripts import edit_or_reply, format_exc, progress
+from utils.scripts import edit_or_reply, format_exc, progress, safe_remove
 from utils.rentry import paste as rentry_paste
 
 
@@ -117,8 +117,7 @@ async def openfile(client: Client, message: Message):
         await ms.edit_text(format_exc(e))
 
     finally:
-        if os.path.exists(file_path):
-            os.remove(file_path)
+        safe_remove(file_path)
 
 
 modules_help["open"] = {
