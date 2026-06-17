@@ -17,8 +17,9 @@
 import base64
 from io import BytesIO
 
-import requests
+import aiohttp
 from pyrogram import Client, filters, errors, types
+from pyrogram.enums import ChatMemberStatus, ChatType
 from pyrogram.types import Message
 
 from utils.misc import modules_help, prefix
@@ -78,14 +79,16 @@ async def quote_cmd(client: Client, message: Message):
         "text_color": "#fff",
     }
 
-    response = requests.post(QUOTES_API, json=params)
-    if not response.ok:
-        return await message.edit(
-            f"<b>Quotes API error!</b>\n<code>{response.text}</code>"
-        )
+    async with aiohttp.ClientSession() as session:
+        async with session.post(QUOTES_API, json=params, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            if response.status != 200:
+                return await message.edit(
+                    f"<b>Quotes API error!</b>\n<code>{await response.text()}</code>"
+                )
+            content = await response.read()
 
     resized = resize_image(
-        BytesIO(response.content), img_type="PNG" if is_png else "WEBP"
+        BytesIO(content), img_type="PNG" if is_png else "WEBP"
     )
     await message.edit("<b>Sending...</b>")
 
@@ -135,14 +138,16 @@ async def fake_quote_cmd(client: Client, message: types.Message):
         "text_color": "#fff",
     }
 
-    response = requests.post(QUOTES_API, json=params)
-    if not response.ok:
-        return await message.edit(
-            f"<b>Quotes API error!</b>\n<code>{response.text}</code>"
-        )
+    async with aiohttp.ClientSession() as session:
+        async with session.post(QUOTES_API, json=params, timeout=aiohttp.ClientTimeout(total=30)) as response:
+            if response.status != 200:
+                return await message.edit(
+                    f"<b>Quotes API error!</b>\n<code>{await response.text()}</code>"
+                )
+            content = await response.read()
 
     resized = resize_image(
-        BytesIO(response.content), img_type="PNG" if is_png else "WEBP"
+        BytesIO(content), img_type="PNG" if is_png else "WEBP"
     )
     await message.edit("<b>Sending...</b>")
 
@@ -224,7 +229,7 @@ async def render_message(app: Client, message: types.Message) -> dict:
         author["name"] = get_full_name(from_user)
         if message.author_signature:
             author["rank"] = message.author_signature
-        elif message.chat.type != "supergroup" or message.forward_date:
+        elif message.chat.type != ChatType.SUPERGROUP or message.forward_date:
             author["rank"] = ""
         else:
             try:
@@ -234,9 +239,9 @@ async def render_message(app: Client, message: types.Message) -> dict:
             else:
                 author["rank"] = getattr(member, "title", "") or (
                     "owner"
-                    if member.status == "creator"
+                    if member.status == ChatMemberStatus.OWNER
                     else "admin"
-                    if member.status == "administrator"
+                    if member.status == ChatMemberStatus.ADMINISTRATOR
                     else ""
                 )
 
@@ -244,7 +249,9 @@ async def render_message(app: Client, message: types.Message) -> dict:
             author["avatar"] = await get_file(from_user.photo.big_file_id)
         elif not from_user.photo and from_user.username:
             # may be user blocked us, we will try to get avatar via t.me
-            t_me_page = requests.get(f"https://t.me/{from_user.username}").text
+            async with aiohttp.ClientSession() as session:
+                async with session.get(f"https://t.me/{from_user.username}", timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                    t_me_page = await resp.text()
             sub = '<meta property="og:image" content='
             index = t_me_page.find(sub)
             if index != -1:
@@ -254,8 +261,9 @@ async def render_message(app: Client, message: types.Message) -> dict:
                     and link[0]
                     and link[0] != "https://telegram.org/img/t_logo.png"
                 ):
-                    # found valid link
-                    avatar = requests.get(link[0]).content
+                    async with aiohttp.ClientSession() as session:
+                        async with session.get(link[0], timeout=aiohttp.ClientTimeout(total=10)) as resp:
+                            avatar = await resp.read()
                     author["avatar"] = base64.b64encode(avatar).decode()
                 else:
                     author["avatar"] = ""
@@ -270,7 +278,7 @@ async def render_message(app: Client, message: types.Message) -> dict:
     else:
         author["id"] = message.sender_chat.id
         author["name"] = message.sender_chat.title
-        author["rank"] = "channel" if message.sender_chat.type == "channel" else ""
+        author["rank"] = "channel" if message.sender_chat.type == ChatType.CHANNEL else ""
 
         if message.sender_chat.photo:
             author["avatar"] = await get_file(message.sender_chat.photo.big_file_id)
