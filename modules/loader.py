@@ -93,8 +93,8 @@ async def loadmod(_, message: Message):
                 f = requests.get(
                     "https://raw.githubusercontent.com/The-MoonTg-project/custom_modules/main/full.txt"
                 ).text
-            except Exception:
-                return await message.edit("Failed to fetch custom modules list")
+            except requests.RequestException:
+                return await message.edit("<b>Failed to fetch custom modules list</b>")
             modules_dict = {line.split("/")[-1].split()[0]: line.strip() for line in f.splitlines()}
             if module_name in modules_dict:
                 url = f"https://raw.githubusercontent.com/The-MoonTg-project/custom_modules/main/{modules_dict[module_name]}.py"
@@ -233,8 +233,8 @@ async def load_all_mods(_, message: Message):
         f = requests.get(
             "https://raw.githubusercontent.com/The-MoonTg-project/custom_modules/main/full.txt"
         ).text
-    except Exception:
-        return await message.edit("Failed to fetch custom modules list")
+    except requests.RequestException:
+        return await message.edit("<b>Failed to fetch custom modules list</b>")
     modules_list = f.splitlines()
 
     await message.edit("<b>Loading modules...</b>")
@@ -304,8 +304,8 @@ async def updateallmods(_, message: Message):
             f = requests.get(
                 "https://raw.githubusercontent.com/The-MoonTg-project/custom_modules/main/full.txt"
             ).text
-        except Exception:
-            return await message.edit("Failed to fetch custom modules list")
+        except requests.RequestException:
+            return await message.edit("<b>Failed to fetch custom modules list</b>")
         modules_dict = {line.split("/")[-1].split()[0]: line.strip() for line in f.splitlines()}
         if module_name in modules_dict:
             resp = requests.get(

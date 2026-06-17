@@ -39,9 +39,8 @@
 #     "pySmartDL",
 # ]
 # ///
-import os
 import logging
-
+import os
 import sqlite3
 import platform
 import subprocess
@@ -93,8 +92,8 @@ def load_missing_modules():
         f = requests.get(
             "https://raw.githubusercontent.com/The-MoonTg-project/custom_modules/main/full.txt"
         ).text
-    except Exception:
-        logging.error("Failed to fetch custom modules list")
+    except requests.RequestException:
+        logging.error("Failed to fetch custom modules list", exc_info=True)
         return
     modules_dict = {
         line.split("/")[-1].split()[0]: line.strip() for line in f.splitlines()
@@ -151,8 +150,13 @@ async def main():
         }[info["type"]]
         try:
             await app.edit_message_text(info["chat_id"], info["message_id"], text)
-        except errors.RPCError:
-            pass
+        except errors.RPCError as e:
+            logging.warning(
+                "Failed to edit restart notification (chat=%s, msg=%s): %s",
+                info["chat_id"],
+                info["message_id"],
+                e,
+            )
         db.remove("core.updater", "restart_info")
 
     # required for sessionkiller module

@@ -14,6 +14,7 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 import re
 from datetime import datetime, timedelta
 from typing import Dict, Union
@@ -511,7 +512,7 @@ class TimeMuteUsersHandler:
                         count += 1
                         text += f"{count}. <b>{name}</b>\n"
                 except PeerIdInvalid:
-                    pass
+                    logging.debug("Skipping tmuted user %s: peer ID not found", user)
             if count == 0:
                 await self.message.edit("<b>No users in tmute</b>")
             else:

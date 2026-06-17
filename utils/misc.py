@@ -14,9 +14,12 @@
 #  You should have received a copy of the GNU General Public License
 #  along with this program.  If not, see <https://www.gnu.org/licenses/>.
 
+import logging
 from sys import version_info
-from .db import db
+
 import git
+
+from .db import db
 
 __all__ = [
     "modules_help",
@@ -38,6 +41,7 @@ prefix = db.get("core.main", "prefix", ".")
 try:
     gitrepo = git.Repo(".")
 except git.exc.InvalidGitRepositoryError:
+    logging.warning("Git repository not found, initializing from upstream...")
     repo = git.Repo.init()
     origin = repo.create_remote(
         "origin", "https://github.com/The-MoonTg-project/Moon-Userbot"

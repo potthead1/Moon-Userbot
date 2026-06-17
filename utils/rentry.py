@@ -3,6 +3,7 @@
 # @source: https://github.com/radude/rentry/blob/master/rentry.py
 import asyncio
 import http.cookiejar
+import logging
 import urllib.parse
 import urllib.request
 
@@ -182,19 +183,23 @@ async def rentry_cleanup_job():
                         del rallUrls["allUrls"][entry_id]
                         deleted_count += 1
                         print(f"[#] Deleted expired rentry paste: {url}")
-                    except Exception as e:
+                    except Exception:
                         error_count += 1
-                        print(f"[!] Failed to delete rentry paste {url}: {str(e)}")
+                        logging.warning(
+                            "Failed to delete rentry paste %s", url, exc_info=True
+                        )
 
             if deleted_count or error_count:
-                print(
-                    f"[*] Cleanup summary: {deleted_count} deleted, {error_count} failed"
+                logging.info(
+                    "Rentry cleanup summary: %d deleted, %d failed",
+                    deleted_count,
+                    error_count,
                 )
 
             if deleted_count:
                 db.set("core.rentry", "urls", rallUrls)
 
-        except Exception as e:
-            print(f"[!] Error in rentry cleanup job: {str(e)}")
+        except Exception:
+            logging.error("Error in rentry cleanup job", exc_info=True)
 
         await asyncio.sleep(12 * 60 * 60)
