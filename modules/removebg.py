@@ -176,7 +176,7 @@ async def rembg(client: Client, message: Message):
             except ValueError:
                 await message.edit("<b>File not found</b>")
                 return
-        background_removed_data = remove_background(photo_data)
+        background_removed_data = await remove_background(photo_data)
 
         if background_removed_data:
             await message.delete()
