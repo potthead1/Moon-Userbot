@@ -101,11 +101,11 @@ async def check_new_login(client: Client, update: UpdateServiceNotification, _, 
         raise ContinuePropagation
     if not db.get("core.sessionkiller", "enabled", False):
         raise ContinuePropagation
-    authorizations = (await client.invoke(GetAuthorizations()))["authorizations"]
+    authorizations = (await client.invoke(GetAuthorizations())).authorizations
     for auth in authorizations:
         if auth.current:
             continue
-        if auth["hash"] not in auth_hashes:
+        if auth.hash not in auth_hashes:
             # found new unexpected login
             try:
                 await client.invoke(ResetAuthorization(hash=auth.hash))

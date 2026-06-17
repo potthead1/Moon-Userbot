@@ -98,10 +98,8 @@ class BanHandler:
     async def handle_ban(self):
         if self.message.reply_to_message:
             await self.handle_reply_ban()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_ban()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_ban()
 
     async def handle_reply_ban(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -110,7 +108,7 @@ class BanHandler:
 
     async def handle_non_reply_ban(self):
         if (
-            self.message.chat.type not in ["private", "channel"]
+            self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]
             and len(self.cause.split()) > 1
         ):
             user_to_ban = await self.get_user_to_ban()
@@ -185,10 +183,8 @@ class UnbanHandler:
     async def handle_unban(self):
         if self.message.reply_to_message:
             await self.handle_reply_unban()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_unban()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_unban()
 
     async def handle_reply_unban(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -197,7 +193,7 @@ class UnbanHandler:
 
     async def handle_non_reply_unban(self):
         if (
-            self.message.chat.type not in ["private", "channel"]
+            self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]
             and len(self.cause.split()) > 1
         ):
             user_to_unban = await self.get_user_to_unban()
@@ -255,10 +251,8 @@ class KickHandler:
     async def handle_kick(self):
         if self.message.reply_to_message:
             await self.handle_reply_kick()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_kick()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_kick()
 
     async def handle_reply_kick(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -378,10 +372,8 @@ class TimeMuteHandler:
     async def handle_tmute(self):
         if self.message.reply_to_message:
             await self.handle_reply_tmute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_tmute()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_tmute()
 
     async def handle_reply_tmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -441,10 +433,8 @@ class TimeUnmuteHandler:
     async def handle_tunmute(self):
         if self.message.reply_to_message:
             await self.handle_reply_tunmute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_tunmute()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_tunmute()
 
     async def handle_reply_tunmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -553,10 +543,8 @@ class UnmuteHandler:
     async def handle_unmute(self):
         if self.message.reply_to_message:
             await self.handle_reply_unmute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_unmute()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_unmute()
 
     async def handle_reply_unmute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -630,10 +618,8 @@ class MuteHandler:
     async def handle_mute(self):
         if self.message.reply_to_message:
             await self.handle_reply_mute()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_mute()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_mute()
 
     async def handle_reply_mute(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -759,10 +745,8 @@ class DemoteHandler:
     async def handle_demote(self):
         if self.message.reply_to_message:
             await self.handle_reply_demote()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_demote()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_demote()
 
     async def handle_reply_demote(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -849,10 +833,8 @@ class PromoteHandler:
     async def handle_promote(self):
         if self.message.reply_to_message:
             await self.handle_reply_promote()
-        elif not self.message.reply_to_message:
-            await self.handle_non_reply_promote()
         else:
-            await self.message.edit("<b>Unsupported</b>")
+            await self.handle_non_reply_promote()
 
     async def handle_reply_promote(self):
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
@@ -924,7 +906,7 @@ class PromoteHandler:
                 privileges=ChatPrivileges(**self.common_privileges_promote),
                 title=title,
             )
-            if len(self.cause.split()) > 1 and self.message.chat.type == "group":
+            if len(self.cause.split()) > 1 and self.message.chat.type == ChatType.GROUP:
                 await self.client.set_administrator_title(
                     self.chat_id,
                     user_id,
@@ -1003,10 +985,8 @@ class DeleteHistoryHandler:
         if self.message.chat.type not in [ChatType.PRIVATE, ChatType.CHANNEL]:
             if self.message.reply_to_message:
                 await self.handle_reply_delete_history()
-            elif not self.message.reply_to_message:
-                await self.handle_non_reply_delete_history()
             else:
-                await self.message.edit("<b>Unsupported</b>")
+                await self.handle_non_reply_delete_history()
 
     async def handle_reply_delete_history(self):
         if self.message.reply_to_message.from_user:

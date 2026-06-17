@@ -78,10 +78,10 @@ def format_welcome_text(raw_text: str, user, chat) -> str:
     return text
 
 
-@Client.on_message(filters.group | filters.channel & ~filters.me)
+@Client.on_message((filters.group | filters.channel) & ~filters.me)
 async def admintool_handler(_, message: Message):
     if message.sender_chat and (
-        message.sender_chat.type == "supergroup"
+        message.sender_chat.type == ChatType.SUPERGROUP
         or message.sender_chat.id == db_cache.get(f"linked{message.chat.id}", 0)
     ):
         raise ContinuePropagation
@@ -236,7 +236,7 @@ async def report_spam(client: Client, message: Message):
     except Exception as e:
         await message.edit(format_exc(e))
     else:
-        await message.edit(f"<b>Message</a> from {name} was reported</b>")
+        await message.edit(f"<b>Message from {name} was reported</b>")
 
 
 @Client.on_message(filters.command("pin", prefix) & filters.me)
