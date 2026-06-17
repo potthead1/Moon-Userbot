@@ -18,7 +18,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "pip",
-#     "pyrofork",
+#     "pyrofork==2.3.67",
 #     "tgcrypto",
 #     "wheel",
 #     "gunicorn",
