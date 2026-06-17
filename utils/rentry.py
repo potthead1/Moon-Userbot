@@ -147,7 +147,7 @@ async def paste(
         time_now = datetime.now()
         ftime = time_now.strftime("%d %I:%M:%S %p %Y")
 
-        print(f"URL: {url} - Edit Code: {edit_code} - Time: {ftime}")
+        print(f"URL: {url} - Time: {ftime}")
 
         rallUrls = db.get("core.rentry", "urls", default={"allUrls": {}})
         entry_id = str(uuid4())

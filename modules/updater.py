@@ -45,7 +45,7 @@ async def restart_cmd(_, message: Message):
 
     if "LAVHOST" in os.environ:
         await message.edit("<b>Your lavHost is restarting...</b>")
-        os.system("lavhost restart")
+        subprocess.run(["lavhost", "restart"], check=False)
         return
 
     await message.edit("<b>Restarting...</b>")
@@ -68,7 +68,7 @@ async def update(_, message: Message):
 
     if "LAVHOST" in os.environ:
         await message.edit("<b>Your lavHost is updating...</b>")
-        os.system("lavhost update")
+        subprocess.run(["lavhost", "update"], check=False)
         return
 
     await message.edit("<b>Updating...</b>")

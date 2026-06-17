@@ -122,10 +122,14 @@ class SqliteDatabase(Database):
             return row["val"]
         return json.loads(row["val"])
 
-    def _execute(self, module: str, *args, **kwargs) -> sqlite3.Cursor:
-        pattern = r"^(core|custom)"
+    @staticmethod
+    def _validate_module_name(module: str):
+        pattern = r"^(core|custom)[a-zA-Z0-9._-]*$"
         if not re.match(pattern, module):
             raise ValueError(f"Invalid module name format: {module}")
+
+    def _execute(self, module: str, *args, **kwargs) -> sqlite3.Cursor:
+        self._validate_module_name(module)
 
         self._lock.acquire()
         try:
@@ -188,9 +192,7 @@ class SqliteDatabase(Database):
         self._conn.commit()
 
     def get_collection(self, module: str) -> dict:
-        pattern = r"^(core|custom)"
-        if not re.match(pattern, module):
-            raise ValueError(f"Invalid module name format: {module}")
+        self._validate_module_name(module)
 
         sql = f"SELECT * FROM '{module}'"
         cur = self._execute(module, sql)

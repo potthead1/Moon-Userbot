@@ -26,7 +26,14 @@ commands = ["spam", "statspam", "slowspam", "fastspam"]
 
 @Client.on_message(filters.command(commands, prefix) & filters.me)
 async def spam(client: Client, message: Message):
-    amount = int(message.command[1])
+    if len(message.command) < 3:
+        return await message.edit("<b>Usage: [command] [amount] [text]</b>")
+    try:
+        amount = int(message.command[1])
+    except ValueError:
+        return await message.edit("<b>Amount must be a number</b>")
+    if amount < 1 or amount > 100:
+        return await message.edit("<b>Amount must be between 1 and 100</b>")
     text = " ".join(message.command[2:])
 
     cooldown = {"spam": 0.15, "statspam": 0.1, "slowspam": 0.9, "fastspam": 0}

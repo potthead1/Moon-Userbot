@@ -30,6 +30,16 @@ from utils.db import db
 
 
 BASE_PATH = os.path.abspath(os.getcwd())
+
+
+def _sanitize_module_name(name: str) -> str | None:
+    """Validate and sanitize a module name to prevent path traversal."""
+    name = os.path.basename(name).replace(".py", "")
+    if not name or ".." in name or "/" in name or "\\" in name:
+        return None
+    return name
+
+
 CATEGORIES = [
     "ai",
     "dl",
@@ -131,6 +141,10 @@ async def loadmod(_, message: Message):
             await message.edit(f"<b>Module <code>{module_name}</code> is not found</b>")
             return
 
+        module_name = _sanitize_module_name(module_name)
+        if not module_name:
+            return await message.edit("<b>Invalid module name</b>")
+
         if not os.path.exists(f"{BASE_PATH}/modules/custom_modules"):
             os.mkdir(f"{BASE_PATH}/modules/custom_modules")
 
@@ -138,7 +152,12 @@ async def loadmod(_, message: Message):
             f.write(resp.content)
     else:
         file_name = await message.reply_to_message.download()
-        module_name = message.reply_to_message.document.file_name[:-3]
+        module_name = _sanitize_module_name(
+            message.reply_to_message.document.file_name[:-3]
+        )
+        if not module_name:
+            os.remove(file_name)
+            return await message.edit("<b>Invalid module name</b>")
 
         with open(file_name, "rb") as f:
             content = f.read()
@@ -188,6 +207,10 @@ async def unload_mods(_, message: Message):
         "https://raw.githubusercontent.com/The-MoonTg-project/custom_modules/main/"
     ):
         module_name = module_name.split("/")[-1].split(".")[0]
+
+    module_name = _sanitize_module_name(module_name)
+    if not module_name:
+        return await message.edit("<b>Invalid module name</b>")
 
     if os.path.exists(f"{BASE_PATH}/modules/custom_modules/{module_name}.py"):
         os.remove(f"{BASE_PATH}/modules/custom_modules/{module_name}.py")

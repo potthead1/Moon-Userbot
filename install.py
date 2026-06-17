@@ -42,8 +42,7 @@ if __name__ == "__main__":
         except errors.ConnectionFailure as e:
             raise RuntimeError(
                 "MongoDB server isn't available! "
-                f"Provided url: {config.db_url}. "
-                "Enter valid URL and restart installation"
+                "Check your DATABASE_URL and restart installation"
             ) from e
 
     install_type = sys.argv[1] if len(sys.argv) > 1 else "3"

@@ -7,6 +7,7 @@
 # All rights reserved.
 # Modifed by @moonuserbot
 
+import asyncio
 import io
 import os
 from datetime import datetime
@@ -51,19 +52,23 @@ async def convert_to_image(message, client) -> None | str:
         else:
             path_s = await client.download_media(message.reply_to_message)
             final_path = "lottie_proton.png"
-            cmd = (
-                f"lottie_convert.py --frame 0 -if lottie -of png {path_s} {final_path}"
-            )
-            await exec(cmd)  # skipcq
+            cmd = [
+                "lottie_convert.py", "--frame", "0",
+                "-if", "lottie", "-of", "png", path_s, final_path,
+            ]
+            proc = await asyncio.create_subprocess_exec(*cmd)
+            await proc.wait()
     elif message.reply_to_message.audio:
         thumb = message.reply_to_message.audio.thumbs[0].file_id
         final_path = await client.download_media(thumb)
     elif message.reply_to_message.video or message.reply_to_message.animation:
         final_path = "fetched_thumb.png"
         vid_path = await client.download_media(message.reply_to_message)
-        await exec(
-            f"ffmpeg -i {vid_path} -filter:v scale=500:500 -an {final_path}"
-        )  # skipcq
+        proc = await asyncio.create_subprocess_exec(
+            "ffmpeg", "-i", vid_path,
+            "-filter:v", "scale=500:500", "-an", final_path,
+        )
+        await proc.wait()
     elif message.reply_to_message.document:
         if message.reply_to_message.document.mime_type == "image/jpeg":
             final_path = await message.reply_to_message.download()

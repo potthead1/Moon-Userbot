@@ -32,6 +32,8 @@ async def sendmod(client: Client, message: Message):
     await message.edit("<b>Dispatching...</b>")
     try:
         module_name = message.command[1].lower()
+        if ".." in module_name or "/" in module_name or "\\" in module_name:
+            return await message.edit("<b>Invalid module name</b>")
         if module_name in modules_help:
             text = format_module_help(module_name)
             if len(text) >= 1024:

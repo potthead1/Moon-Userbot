@@ -48,9 +48,10 @@ async def scan_my_file(_, message: Message):
     )
 
     url = "https://www.virustotal.com/vtapi/v2/file/scan"
-    params = {"apikey": vak}
     files = {"file": (downloaded_file_name, open(downloaded_file_name, "rb"))}
-    response = requests.post(url, files=files, params=params, timeout=10)
+    response = requests.post(
+        url, files=files, data={"apikey": vak}, timeout=10
+    )
     try:
         r_json = response.json()
         md5 = r_json["md5"]
